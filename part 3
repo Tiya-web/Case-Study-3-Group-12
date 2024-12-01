@@ -1,0 +1,71 @@
+%% Part 3
+load('mnist-testing.mat'); % Load test data
+predicted_labels = zeros(size(testLabels));
+
+for i = 1:size(testImages, 3)
+    predicted_labels(i) = digitClassifier(testImages(:, :, i));
+end
+
+% Calculate accuracy
+accuracy = mean(predicted_labels == testLabels) * 100;
+fprintf('Test Set Accuracy: %.2f%%\n', accuracy);
+
+
+function label = digitClassifier(image)
+    % Input: 
+    %   image - a single grayscale image (p x p matrix)
+    % Output:
+    %   label - predicted digit label (0-9)
+    
+    % Load necessary data
+    persistent w_vectors; % Persistent storage for weight vectors
+    persistent thresholds; % Persistent storage for decision thresholds
+    if isempty(w_vectors) || isempty(thresholds)
+        load('mnist-training.mat'); % Load training data
+        
+        % Initialize storage for all classes (0-9)
+        num_classes = 10;
+        w_vectors = cell(num_classes, 1);
+        thresholds = zeros(num_classes, 1);
+        
+        % Train a classifier for each class
+        for k = 0:num_classes-1
+            % Flatten training images
+            [p, ~, n] = size(trainImages);
+            flattened_images = reshape(trainImages, [p^2, n]);
+            
+            % Extract samples of class k
+            class_samples = flattened_images(:, trainLabels == k);
+            
+            % Create a Boolean boundary vector w_k for class k
+            pixel_intensity = sum(class_samples, 2); % Sum across all class samples
+            pixel_threshold = mean(pixel_intensity); % Set threshold as mean intensity
+            w_k = pixel_intensity >= pixel_threshold; % Boolean vector
+            
+            % Store the weight vector
+            w_vectors{k + 1} = w_k;
+            
+            % Compute the optimal threshold for class k using ROC curve
+            raw_outputs = w_k' * flattened_images;
+            true_labels = double(trainLabels == k);
+            [~, ~, T, ~] = perfcurve(true_labels, raw_outputs, 1);
+            thresholds(k + 1) = T(1); % Optimal threshold
+        end
+    end
+    
+    % Flatten the input image
+    [p, ~] = size(image);
+    x = image(:); % Convert to column vector
+    
+    % Evaluate all classifiers f_k(x) for k = 0, ..., 9
+    scores = zeros(10, 1);
+    for k = 0:9
+        w_k = w_vectors{k + 1};
+        T_k = thresholds(k + 1);
+        scores(k + 1) = w_k' * x >= T_k; % Binary score
+    end
+    
+    % Predict the label with the highest score
+    [~, label] = max(scores);
+    label = label - 1; % Adjust to 0-indexing
+end
